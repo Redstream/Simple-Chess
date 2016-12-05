@@ -7,6 +7,14 @@ import Data.Maybe
 type Pos = (Int,Int) -- Pos
 type Piece = (Rank, Pos) -- Piece
 
+data Color = Black | White
+    deriving (Eq, Show)
+data Rank = King | Queen | Knight | Rook | Bishop | Pawn
+    deriving (Eq, Show)
+data Board = Board ([Piece],[Piece]) -- Board, (whites,blacks)
+    deriving (Eq,Show)
+
+
 -------- BASIC FUNCTIONS ---------
 -- takeWhile but includes last elements
 takeWhile' :: (a -> Bool) -> [a] -> [a]
@@ -14,18 +22,7 @@ takeWhile' _ []          =  []
 takeWhile' p (x:xs)
     | p x       =  x : takeWhile' p xs
     | otherwise =  [x]
-
-map' :: (a -> Bool) -> [a] -> [a]
-map' _ [] = []
-map' p (x:xs) | p x = x : map' p xs
-              | otherwise = map' p xs
 --------------------------------------
-data Color = Black | White -- Color
-    deriving (Eq, Show)
-data Rank = King | Queen | Knight | Rook | Bishop | Pawn -- Rank 
-    deriving (Eq, Show)
-data Board = Board ([Piece],[Piece]) -- Board, (whites,blacks)
-    deriving (Eq,Show)
 
 -- Create a new game -- 
 newBoard :: Board
@@ -37,7 +34,7 @@ newBoard = Board (
     
     ,[ (Pawn,(i,7)) |i <- [1..8]] ++
     [ (Rook,(1,8)),  (Rook,(8,8)),  (Knight,(7,8))
-    ,  (Knight,(2,8)),  (Bishop,(3,8)),  (Bishop,(6,8)) -- Blackes
+    ,  (Knight,(2,8)),  (Bishop,(3,8)),  (Bishop,(6,8)) -- Blacks
     ,  (King,(5,8)) ,  (Queen,(4,8))])
 
 -- Board Management --
@@ -80,29 +77,14 @@ getKing (Board (w,b)) c = case c of
         
 -- Movement --  
 move :: Board -> Pos -> Pos -> Board
-move b p1 p2 | not (elem p2 (validMoves b p1)) || 
-                    (getPiece b p1)  == Nothing = b   -- Om man försöker flytta till en ogiltig plats -> Board                 -- If move leads to check for enemy
-                   | (r == Pawn) && ((c == Black && (snd p1)==1) 
-                     || (c == White && (snd p2)== 8)) = move (changePiece b p1 Queen) p1 p2   -- En pawn ändras till queen
-                   | otherwise = case getPiece b p2 of
+move b p1 p2    | not (elem p2 (validMoves b p1)) || (getPiece b p1)  == Nothing = b   -- Om man försöker flytta till en ogiltig plats -> Board                 -- If move leads to check for enemy
+                | (r == Pawn) && ((c == Black && (snd p1)==1) || (c == White && (snd p2)== 8)) = move (changePiece b p1 Queen) p1 p2   -- En pawn ändras till queen
+                | otherwise = case getPiece b p2 of
                                  Nothing    -> addPiece ((r,p2),c) (removePiece b p1)    -- Flytta Normal
                                  _          -> addPiece ((r,p2),c) (removePiece (removePiece b p2) p1) --Slå ut en fiendepjäs
     where
         Just ((r,_),c) = getPiece b p1
-        
-        
--- Går in i evighestloop!!!!!!!!! --- 
-validMovesCheck :: Board -> Pos -> [Pos]
-validMovesCheck b p | getPiece b p == Nothing = []
-                    | otherwise = [p' | p' <- validMoves b p, not (kKing (move b p p'))]
-    where
-        kKing b = elem kPos enemyMoves
-            where
-                enemyMoves = concat $ map (validMoves b) $ map (\(_,p') -> p') (getOpponents b (c))
-                (_,kPos)   = getKing b c
-                Just (_,c) = getPiece b p
-                        
-                           
+
 -- Returns All the valid positions to move to of a Piece on a given position on the board.
 validMoves :: Board -> Pos -> [Pos]
 validMoves b p | getPiece b p == Nothing = []
@@ -112,33 +94,27 @@ validMoves b p | getPiece b p == Nothing = []
 
 possibleMoves :: Board -> Pos -> [Pos]
 possibleMoves b p = case getPiece b p of
-     Just ((Pawn,(x,y)),White)  -> [(x+a,y+1)| a <- [-1..1]                     -- Pawn White -DONE-
-        , ((a==0 && isEmptyPos b (x,y+1)) ||                                    
-        (opponent b (x,y) (x+a,y+1) && a /= 0))] ++ [(x,y+2)|y == 2]
-        
-     Just ((Pawn,(x,y)),Black)  -> [(x+a,y-1)| a <- [-1..1]                     -- Pawn Black -DONE-
-        , ((a==0 && isEmptyPos b (x,y-1)) || 
-        (opponent b (x,y) (x+a,y-1) && a /= 0))] ++ [(x,y-2)|y == 7]          
-        
-     Just ((Rook,(x,y)),_)      -> clearCrossPath b (x,y)                       -- Rook -DONE-
-        
-     Just ((Bishop,(x,y)),_)    -> clearXPath b (x,y)                           -- Bishop -DONE-
-       
-     Just ((Knight,(x,y)),_)    -> [(x+a,y+b)| a <- [-3,3]                      -- Knight -DONE-
+    Just ((Pawn,(x,y)),White)  -> [(x+a,y+1)| a <- [-1..1]
+        , ((a==0 && isEmptyPos b (x,y+1)) || (opponent b (x,y) (x+a,y+1) && a /= 0))]
+        ++ [(x,y+2)|y == 2]
+    Just ((Pawn,(x,y)),Black)  -> [(x+a,y-1)| a <- [-1..1], ((a==0 && isEmptyPos b (x,y-1)) ||
+        (opponent b (x,y) (x+a,y-1) && a /= 0))]
+        ++ [(x,y-2)|y == 7]
+    Just ((Rook,(x,y)),_)      -> clearCrossPath b (x,y)
+    Just ((Bishop,(x,y)),_)    -> clearXPath b (x,y)
+    Just ((Knight,(x,y)),_)    -> [(x+a,y+b)| a <- [-3,3]
         , b <- [-1,1]] ++ [(x+a,y+b)| a <- [-1,1], b <- [-3,3]]
-        
-     Just ((King,(x,y)),_)      -> [(a+x,b+y)|a <- [-1..1], b <- [-1..1]]       -- King -DONE-
-        
-     Just ((Queen,(x,y)),_)     -> clearCrossPath b (x,y) ++ clearXPath b (x,y) -- Queen -DONE-
+    Just ((King,(x,y)),_)      -> [(a+x,b+y)|a <- [-1..1], b <- [-1..1]]
+    Just ((Queen,(x,y)),_)     -> clearCrossPath b (x,y) ++ clearXPath b (x,y)
     where
-        -- Bishops and Queen, Kryss path
+        -- Bishops and Queen
         clearXPath b (x,y) = 
                takeWhile'(isEmptyPos b)[(x+i,y+i)|i <- [1..7]]
             ++ takeWhile'(isEmptyPos b)[(x+i,y-i)|i <- [1..7]]
             ++ takeWhile'(isEmptyPos b)[(x-i,y+i)|i <- [1..7]]
             ++ takeWhile'(isEmptyPos b)[(x-i,y-i)|i <- [1..7]]
                 
-        -- Rooks and Queen, Kross path
+        -- Rooks and Queen
         clearCrossPath b (x,y) = 
                takeWhile'(isEmptyPos b)[(x+i,y)|i <- [1..7]]
             ++ takeWhile'(isEmptyPos b)[(x-i,y)|i <- [1..7]]
@@ -187,20 +163,19 @@ allMoves b c = concat $ map (valid) $ map (\(r,p) -> p) (getOpponents b (colorIn
                 kKing b c = elem kPos $ concat $ map (validMoves b) $ map (\(r,p) -> p)$  getOpponents b (c)
                     where
                         (_,kPos) = getKing b c
-                        
--- move, validMoves, getOpponents, colorInv
 
 -- Invers of the Color --
 colorInv White = Black
 colorInv Black = White
                 
--- End Game --
+-- Is it check mate? --
 gameOver :: Board -> Bool
 gameOver b = (check b Black && (allMoves b Black) == []) || (check b White && (allMoves b White) == [])
 
 winner :: Board -> Color
 winner b | (check b Black && (allMoves b Black) == [])  = White
          | (check b White && (allMoves b White) == [])  = Black
-        
+
+-- Neither black nor white has valid moves
 stalemate :: Board -> Bool
 stalemate b = not (check b Black || check b White) && (((allMoves b Black) == [])||(allMoves b White) == [])
